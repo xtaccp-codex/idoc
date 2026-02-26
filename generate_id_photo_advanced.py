@@ -73,6 +73,12 @@ def get_rembg_session():
             logger.error(f"加载 rembg 模型失败: {e}")
     return _REMBG_SESSION
 
+def clear_rembg_session():
+    """销毁缓存的 rembg session，释放 ONNX Runtime 占用的 C 级内存。
+    适用于小内存服务器，下次调用 get_rembg_session() 时会自动重新加载。"""
+    global _REMBG_SESSION
+    _REMBG_SESSION = None
+
 # ── 预设配置 ──────────────────────────────────────────────
 
 

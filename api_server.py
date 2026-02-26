@@ -18,7 +18,8 @@ from generate_id_photo_advanced import (
     generate_id_photo,
     parse_bg_color,
     parse_size,
-    validate_image_file
+    validate_image_file,
+    clear_rembg_session
 )
 
 # 配置日志
@@ -141,9 +142,10 @@ async def generate_photo_endpoint(
         with open(output_tmp_path, "rb") as f:
             image_bytes = f.read()
 
-        # 主动释放 AI 推理产生的大数组，并强制归还内存给操作系统
+        # 主动释放 AI 推理产生的大数组，并销毁 ONNX 模型会话释放 C 级内存
         del result_bgr
-        _force_release_memory()
+        clear_rembg_session()  # 销毁 ONNX Runtime 模型，释放 ~500MB
+        _force_release_memory()  # gc + malloc_trim 归还给操作系统
 
         # 读完后立即清理临时文件
         cleanup_files(input_tmp_path, output_tmp_path)
