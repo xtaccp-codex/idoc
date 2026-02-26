@@ -39,7 +39,21 @@ app = FastAPI(
 
 # 确保有个临时存储上传文件的工作区
 TEMP_DIR = Path(tempfile.gettempdir()) / "id_photo_api"
-TEMP_DIR.mkdir(parents=True, exist_ok=True)
+
+def init_temp_dir():
+    """初始化临时目录，并清理上次残留的文件"""
+    if TEMP_DIR.exists():
+        # 清理该目录下所有的 input_ 和 output_ 文件
+        for item in TEMP_DIR.glob("*"):
+            if item.is_file():
+                try:
+                    item.unlink()
+                except:
+                    pass
+    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    logger.info(f"已初始化并清理临时目录: {TEMP_DIR}")
+
+init_temp_dir()
 
 # 推理信号量：同一时刻最多只允许 1 个 AI 推理任务运行
 # 在 2G 内存服务器上，并发推理会直接 OOM 炸服
@@ -151,9 +165,6 @@ async def generate_photo_endpoint(
             # clear_rembg_session()  # 已有 8G Swap，不再释放模型，以换取极速响应速度
             _force_release_memory()  # 依然执行 gc + malloc_trim 归还非模型内存给系统
 
-        # 读完后立即清理临时文件
-        cleanup_files(input_tmp_path, output_tmp_path)
-
         return Response(
             content=image_bytes,
             media_type="image/jpeg",
@@ -163,11 +174,12 @@ async def generate_photo_endpoint(
         )
         
     except HTTPException:
-        cleanup_files(input_tmp_path)
         raise
     except Exception as e:
-        cleanup_files(input_tmp_path, output_tmp_path)
         raise HTTPException(status_code=500, detail=f"服务器处理未知异常: {str(e)}")
+    finally:
+        # 【终极修复】无论成功与否，必定清理临时文件
+        cleanup_files(input_tmp_path, output_tmp_path)
 
 
 if __name__ == "__main__":
