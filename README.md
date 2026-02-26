@@ -1,0 +1,1 @@
+python3 generate_id_photo_advanced.py -i done.jpg -bg "#FF8500" -s 200x200
