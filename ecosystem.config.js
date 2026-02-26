@@ -12,8 +12,8 @@ module.exports = {
     exec_mode: "fork",
     autorestart: true,
     watch: false,
-    // 2G 内存：总共跑两个进程，给每个进程 800M 左右的极限界限防炸服 (留给系统 400M)
-    max_memory_restart: "800M",
+    // 2G 内存：AI 推理峰值约 800M~1G，设 1500M 留足空间防止每次请求后都被 PM2 误杀重启
+    max_memory_restart: "1500M",
     env: {
       NODE_ENV: "production",
     }
