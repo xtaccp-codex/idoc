@@ -22,6 +22,7 @@ app = FastAPI(
     title="Advanced ID Photo Generator API",
     description="商业级证件照生成器 HTTP 服务，支持 AI 精确抠图与边缘羽化",
     version="2.0",
+    root_path="/idoc-api",  # 用于配合 Nginx 的 /idoc-api/ 转发，让 Swagger 接口测试页面上的路径不变错
 )
 
 # 确保有个临时存储上传文件的工作区
