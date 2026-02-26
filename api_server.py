@@ -3,6 +3,7 @@ import secrets
 import shutil
 import tempfile
 import asyncio
+import gc
 import logging
 from pathlib import Path
 from functools import partial
@@ -124,7 +125,11 @@ async def generate_photo_endpoint(
         with open(output_tmp_path, "rb") as f:
             image_bytes = f.read()
 
-        # 读完后立即清理临时文件，不再依赖 BackgroundTasks
+        # 主动释放 AI 推理产生的大数组，防止 2G 小内存服务器被 OOM Killer 杀掉
+        del result_bgr
+        gc.collect()
+
+        # 读完后立即清理临时文件
         cleanup_files(input_tmp_path, output_tmp_path)
 
         return Response(
