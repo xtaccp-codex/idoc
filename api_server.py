@@ -3,6 +3,7 @@ import secrets
 import shutil
 import tempfile
 import asyncio
+import ctypes
 import gc
 import logging
 from pathlib import Path
@@ -38,6 +39,21 @@ app = FastAPI(
 # 确保有个临时存储上传文件的工作区
 TEMP_DIR = Path(tempfile.gettempdir()) / "id_photo_api"
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
+
+# Linux 下加载 glibc，用于强制释放内存回给操作系统
+try:
+    _libc = ctypes.CDLL("libc.so.6")
+    def _force_release_memory():
+        """Python 的 gc.collect() 只回收对象，但不会把内存还给 OS。
+        调用 glibc 的 malloc_trim(0) 可以强制把空闲的内存页归还给操作系统。"""
+        gc.collect()
+        _libc.malloc_trim(0)
+        logger.info("已强制释放内存回给操作系统")
+except OSError:
+    # macOS / Windows 上没有 libc.so.6，回退为纯 gc
+    def _force_release_memory():
+        gc.collect()
+        logger.info("已执行 gc.collect()（非 Linux 环境，跳过 malloc_trim）")
 
 def cleanup_files(*file_paths: Path):
     """清理临时文件"""
@@ -125,9 +141,9 @@ async def generate_photo_endpoint(
         with open(output_tmp_path, "rb") as f:
             image_bytes = f.read()
 
-        # 主动释放 AI 推理产生的大数组，防止 2G 小内存服务器被 OOM Killer 杀掉
+        # 主动释放 AI 推理产生的大数组，并强制归还内存给操作系统
         del result_bgr
-        gc.collect()
+        _force_release_memory()
 
         # 读完后立即清理临时文件
         cleanup_files(input_tmp_path, output_tmp_path)
