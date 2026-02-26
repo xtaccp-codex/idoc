@@ -22,6 +22,9 @@ app = FastAPI(
     title="Advanced ID Photo Generator API",
     description="商业级证件照生成器 HTTP 服务，支持 AI 精确抠图与边缘羽化",
     version="2.0",
+    # 修复 Swagger UI 去域名根目录找 json 的报错
+    openapi_url="/idoc-api/openapi.json",
+    docs_url="/docs",
 )
 
 # 确保有个临时存储上传文件的工作区
