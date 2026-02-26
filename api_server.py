@@ -41,6 +41,10 @@ app = FastAPI(
 TEMP_DIR = Path(tempfile.gettempdir()) / "id_photo_api"
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
+# 推理信号量：同一时刻最多只允许 1 个 AI 推理任务运行
+# 在 2G 内存服务器上，并发推理会直接 OOM 炸服
+_inference_semaphore = asyncio.Semaphore(1)
+
 # Linux 下加载 glibc，用于强制释放内存回给操作系统
 try:
     _libc = ctypes.CDLL("libc.so.6")
@@ -117,35 +121,35 @@ async def generate_photo_endpoint(
         with open(input_tmp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
-        # === 【核心修复】将阻塞的 AI 推理丢进线程池，不再卡死事件循环 ===
-        # 这样第二个请求进来时，FastAPI 的主循环仍然能接收和排队，不会被 Nginx 判定超时
-        loop = asyncio.get_event_loop()
-        result_bgr = await loop.run_in_executor(
-            None,  # 使用默认线程池
-            partial(
-                _blocking_generate,
-                input_path=str(input_tmp_path),
-                output_path=str(output_tmp_path),
-                bg_color=parsed_bg_color,
-                output_size=parsed_size,
-                skip_quality_check=skip_quality_check,
+        # === 【并发保护】同一时间只允许一个推理任务，防止 2G 服务器 OOM ===
+        async with _inference_semaphore:
+            loop = asyncio.get_event_loop()
+            result_bgr = await loop.run_in_executor(
+                None,
+                partial(
+                    _blocking_generate,
+                    input_path=str(input_tmp_path),
+                    output_path=str(output_tmp_path),
+                    bg_color=parsed_bg_color,
+                    output_size=parsed_size,
+                    skip_quality_check=skip_quality_check,
+                )
             )
-        )
-        
-        if result_bgr is None:
-            raise HTTPException(
-                status_code=422, 
-                detail="证件照生成失败，可能是质量检测未通过，或 AI 背景去除、人脸裁切异常。请检查服务器日志或尝试开启 skip_quality_check=True"
-            )
+            
+            if result_bgr is None:
+                raise HTTPException(
+                    status_code=422, 
+                    detail="证件照生成失败，可能是质量检测未通过，或 AI 背景去除、人脸裁切异常。请检查服务器日志或尝试开启 skip_quality_check=True"
+                )
 
-        # === 【核心修复】先把图片完整读入内存再返回，彻底杜绝文件被提前删除的竞态条件 ===
-        with open(output_tmp_path, "rb") as f:
-            image_bytes = f.read()
+            # 先读取生成的图片到内存
+            with open(output_tmp_path, "rb") as f:
+                image_bytes = f.read()
 
-        # 主动释放 AI 推理产生的大数组，并销毁 ONNX 模型会话释放 C 级内存
-        del result_bgr
-        clear_rembg_session()  # 销毁 ONNX Runtime 模型，释放 ~500MB
-        _force_release_memory()  # gc + malloc_trim 归还给操作系统
+            # 在信号量保护内完成清理，确保不会跟下一个请求的模型加载冲突
+            del result_bgr
+            clear_rembg_session()
+            _force_release_memory()
 
         # 读完后立即清理临时文件
         cleanup_files(input_tmp_path, output_tmp_path)
