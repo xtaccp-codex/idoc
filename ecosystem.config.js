@@ -12,8 +12,7 @@ module.exports = {
     exec_mode: "fork",
     autorestart: true,
     watch: false,
-    // 2G 内存：AI 推理峰值约 800M~1G，设 1500M 留足空间防止每次请求后都被 PM2 误杀重启
-    max_memory_restart: "1500M",
+    // max_memory_restart 已移除，不限制内存（适合单服务独占机器的场景）
     env: {
       NODE_ENV: "production",
     }
