@@ -146,10 +146,10 @@ async def generate_photo_endpoint(
             with open(output_tmp_path, "rb") as f:
                 image_bytes = f.read()
 
-            # 在信号量保护内完成清理，确保不会跟下一个请求的模型加载冲突
+            # 在信号量保护内完成清理
             del result_bgr
-            clear_rembg_session()
-            _force_release_memory()
+            # clear_rembg_session()  # 已有 8G Swap，不再释放模型，以换取极速响应速度
+            _force_release_memory()  # 依然执行 gc + malloc_trim 归还非模型内存给系统
 
         # 读完后立即清理临时文件
         cleanup_files(input_tmp_path, output_tmp_path)
